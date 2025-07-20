@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bloggeer - Your Blog Platform</title>
+
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div class="logo">Bloggeer</div>
+        <div class="user-info">
+          <div id="authSection">
+            <button class="btn" onclick="showLogin()">Login</button>
+            <button class="btn btn-secondary" onclick="showSignup()">Sign Up</button>
+          </div>
+          <div id="userSection" class="hidden">
+            <span id="welcomeText"></span>
+            <button class="btn" onclick="showCreatePost()">New Post</button>
+            <button class="btn btn-secondary" onclick="logout()">Logout</button>
+          </div>
+        </div>
+      </div>
+
+
+
+      <!-- Main Content -->
+      <div class="content">
+        <div id="postsContainer">
+          <div class="loading">Loading posts...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal('loginModal')">&times;</span>
+        <h2>Login to Bloggeer</h2>
+        <form id="loginForm" class="auth-form">
+          <div class="form-group">
+            <label>Username:</label>
+            <input type="text" id="loginUser" required />
+          </div>
+          <div class="form-group">
+            <label>Password:</label>
+            <input type="password" id="loginPassword" required />
+          </div>
+          <button type="submit" class="btn" style="width: 100%">Login</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Signup Modal -->
+    <div id="signupModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal('signupModal')">&times;</span>
+        <h2>Join Bloggeer</h2>
+        <form id="signupForm" class="auth-form">
+          <div class="form-group">
+            <label>Username:</label>
+            <input type="text" id="signupUsername" required />
+          </div>
+          <div class="form-group">
+            <label>Email:</label>
+            <input type="email" id="signupEmail" required />
+          </div>
+          <div class="form-group">
+            <label>Password (min 6 characters):</label>
+            <input type="password" id="signupPassword" required minlength="6" />
+          </div>
+          <button type="submit" class="btn" style="width: 100%">Sign Up</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Create Post Modal -->
+    <div id="postModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal('postModal')">&times;</span>
+        <h2>Create New Post</h2>
+        <form id="postForm">
+          <div class="form-group">
+            <label>Title:</label>
+            <input type="text" id="postTitle" required />
+          </div>
+          <div class="form-group">
+            <label>Content:</label>
+            <textarea id="postBody" required placeholder="Write your blog post content here..."></textarea>
+          </div>
+          <button type="submit" class="btn" style="width: 100%">Create Post</button>
+        </form>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/parse/4.2.0/parse.min.js"></script>
+    <script>
+      // Initialize Parse
+      Parse.initialize(
+        "jlcH3Hy2DLCdbMgb727j08d8ODCmtbbzfAQKbUtM", // Application ID
+        "Akrz063wJfuJkFC9Tpgzmc4bZYmA9fAJBWHDZGsY" // JavaScript Key
+      );
+      Parse.serverURL = "https://parseapi.back4app.com/";
+
+      // Global state
+      let currentUser = null;
+
+      // Initialize app
+      document.addEventListener("DOMContentLoaded", function () {
+        setupEventListeners();
+        checkCurrentUser();
+        loadPosts();
+      });
+
+      function setupEventListeners() {
+        document.getElementById("loginForm").addEventListener("submit", handleLogin);
+        document.getElementById("signupForm").addEventListener("submit", handleSignup);
+        document.getElementById("postForm").addEventListener("submit", handlePostSubmit);
+      }
+
+      // Authentication functions
+      async function checkCurrentUser() {
+        const user = Parse.User.current();
+        if (user) {
+          currentUser = user;
+          updateUIForUser();
+        } else {
+          currentUser = null;
+          updateUIForUser();
+        }
+      }
+
+      async function handleLogin(e) {
+        e.preventDefault();
+        
+        const username = document.getElementById("loginUser").value;
+        const password = document.getElementById("loginPassword").value;
+
+        try {
+          const user = await Parse.User.logIn(username, password);
+          
+          currentUser = user;
+          updateUIForUser();
+          closeModal("loginModal");
+          showAlert("Welcome back!", "success");
+          loadPosts();
+        } catch (error) {
+          showAlert(`Login failed: ${error.message}`, "error");
+        }
+      }
+
+      async function handleSignup(e) {
+        e.preventDefault();
+
+        const username = document.getElementById("signupUsername").value;
+        const email = document.getElementById("signupEmail").value;
+        const password = document.getElementById("signupPassword").value;
+
+        try {
+          const user = new Parse.User();
+          user.set("username", username);
+          user.set("email", email);
+          user.set("password", password);
+
+          await user.signUp();
+
+          currentUser = user;
+          updateUIForUser();
+          closeModal("signupModal");
+          showAlert("Account created successfully!", "success");
+          loadPosts();
+        } catch (error) {
+          showAlert(`Signup failed: ${error.message}`, "error");
+        }
+      }
+
+      async function logout() {
+        try {
+          await Parse.User.logOut();
+          currentUser = null;
+          updateUIForUser();
+          showAlert("Logged out successfully", "success");
+          loadPosts();
+        } catch (error) {
+          // Force logout even if server call fails
+          currentUser = null;
+          updateUIForUser();
+          showAlert("Logged out", "success");
+        }
+      }
+
+      function updateUIForUser() {
+        const authSection = document.getElementById("authSection");
+        const userSection = document.getElementById("userSection");
+        const welcomeText = document.getElementById("welcomeText");
+
+        if (currentUser) {
+          authSection.classList.add("hidden");
+          userSection.classList.remove("hidden");
+          welcomeText.textContent = `Welcome, ${currentUser.get("username")}!`;
+        } else {
+          authSection.classList.remove("hidden");
+          userSection.classList.add("hidden");
+        }
+      }
+
+      // Post functions
+      async function loadPosts() {
+        const container = document.getElementById("postsContainer");
+        container.innerHTML = '<div class="loading">Loading posts...</div>';
+
+        try {
+          const query = new Parse.Query("Post");
+          query.equalTo("status", "published");
+          query.include("author");
+          query.descending("createdAt");
+          query.limit(20);
+
+          const posts = await query.find();
+          displayPosts(posts);
+        } catch (error) {
+          container.innerHTML = '<div class="alert alert-error">Failed to load posts</div>';
+        }
+      }
+
+      function displayPosts(posts) {
+        const container = document.getElementById("postsContainer");
+
+        if (posts.length === 0) {
+          container.innerHTML = '<div class="loading">No posts found</div>';
+          return;
+        }
+
+        container.innerHTML = posts.map(post => {
+          const author = post.get("author");
+          const isOwner = currentUser && author && author.id === currentUser.id;
+
+          return `
+            <div class="post-card">
+              <div class="post-title">${post.get("title")}</div>
+              <div class="post-meta">
+                <span>👤 ${author ? author.get("username") : "Unknown"}</span>
+                <span>📅 ${new Date(post.get("createdAt")).toLocaleDateString()}</span>
+              </div>
+              <div class="post-content">${(post.get("body") || "").substring(0, 200)}${post.get("body")?.length > 200 ? "..." : ""}</div>
+              <div class="post-actions">
+                ${isOwner ? `<button class="btn btn-danger" onclick="deletePost('${post.id}')">Delete</button>` : ""}
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      async function handlePostSubmit(e) {
+        e.preventDefault();
+
+        if (!currentUser) {
+          showAlert("Please log in to create posts", "error");
+          return;
+        }
+
+        const title = document.getElementById("postTitle").value;
+        const body = document.getElementById("postBody").value;
+
+        try {
+          const Post = Parse.Object.extend("Post");
+          const post = new Post();
+
+          post.set("title", title);
+          post.set("body", body);
+          post.set("status", "published");
+          post.set("author", currentUser);
+
+          await post.save();
+
+          closeModal("postModal");
+          showAlert("Post created successfully!", "success");
+          document.getElementById("postForm").reset();
+          loadPosts();
+        } catch (error) {
+          showAlert(`Failed to create post: ${error.message}`, "error");
+        }
+      }
+
+      async function deletePost(postId) {
+        if (!confirm("Are you sure you want to delete this post?")) {
+          return;
+        }
+
+        try {
+          const Post = Parse.Object.extend("Post");
+          const query = new Parse.Query(Post);
+          const post = await query.get(postId);
+          
+          // Check ownership
+          if (post.get("author").id !== currentUser.id) {
+            showAlert("You can only delete your own posts", "error");
+            return;
+          }
+
+          await post.destroy();
+          showAlert("Post deleted!", "success");
+          loadPosts();
+        } catch (error) {
+          showAlert(`Failed to delete post: ${error.message}`, "error");
+        }
+      }
+
+      // UI Helper Functions
+      function showLogin() {
+        document.getElementById("loginModal").style.display = "block";
+      }
+
+      function showSignup() {
+        document.getElementById("signupModal").style.display = "block";
+      }
+
+      function showCreatePost() {
+        if (!currentUser) {
+          showAlert("Please log in to create posts", "error");
+          return;
+        }
+        document.getElementById("postModal").style.display = "block";
+      }
+
+      function closeModal(modalId) {
+        document.getElementById(modalId).style.display = "none";
+      }
+
+      function showAlert(message, type) {
+        // Remove existing alerts
+        const existingAlerts = document.querySelectorAll(".alert");
+        existingAlerts.forEach(alert => alert.remove());
+
+        // Create new alert
+        const alert = document.createElement("div");
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+
+        // Insert at top of content
+        const content = document.querySelector(".content");
+        content.insertBefore(alert, content.firstChild);
+
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+          if (alert.parentNode) {
+            alert.remove();
+          }
+        }, 5000);
+      }
+
+      // Close modals when clicking outside
+      window.onclick = function (event) {
+        const modals = document.querySelectorAll(".modal");
+        modals.forEach(modal => {
+          if (event.target === modal) {
+            modal.style.display = "none";
+          }
+        });
+      };
+
+      // Keyboard shortcuts
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          const openModal = document.querySelector('.modal[style*="block"]');
+          if (openModal) {
+            openModal.style.display = "none";
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
